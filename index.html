@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PipeDream — Find the Flow</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Nunito', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            user-select: none;
+        }
+
+        /* ── Animated background canvas ───────────────────────────────── */
+        #bg-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+        }
+
+        /* ── Screen system ────────────────────────────────────────────── */
+        .screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.35s ease;
+        }
+
+        .screen.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        /* ── Shared glass card ────────────────────────────────────────── */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            border-radius: 32px;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+        }
+
+        /* ── Shared button styles ─────────────────────────────────────── */
+        .btn {
+            font-family: 'Nunito', sans-serif;
+            font-weight: 800;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+            letter-spacing: 0.5px;
+            line-height: 1;
+        }
+
+        .btn:hover  { transform: translateY(-3px); }
+        .btn:active { transform: translateY(0px);  }
+
+        .btn-play {
+            font-size: 22px;
+            padding: 18px 64px;
+            background: linear-gradient(135deg, #ffd43b 0%, #ff9f43 100%);
+            color: #1a1a2e;
+            box-shadow: 0 6px 24px rgba(255, 159, 67, 0.45);
+        }
+
+        .btn-play:hover {
+            box-shadow: 0 10px 32px rgba(255, 159, 67, 0.55);
+        }
+
+        .btn-outline {
+            font-size: 18px;
+            padding: 14px 48px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.45);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-small {
+            font-size: 15px;
+            padding: 10px 24px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: 1.5px solid rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-small:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           SCREEN 1 — Main Menu
+        ═══════════════════════════════════════════════════════════════ */
+        #screen-menu .glass-card {
+            padding: 60px 80px;
+            max-width: calc(100vw - 40px);
+            overflow: visible;
+            text-align: center;
+            animation: float 7s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50%       { transform: translateY(-12px); }
+        }
+
+        .title-drop {
+            font-size: 56px;
+            display: block;
+            margin-bottom: 8px;
+            animation: dropBounce 3s ease-in-out infinite;
+        }
+
+        @keyframes dropBounce {
+            0%, 100% { transform: translateY(0) scale(1); }
+            40%       { transform: translateY(-18px) scale(1.05); }
+            60%       { transform: translateY(-10px) scale(1.02); }
+        }
+
+        .game-title {
+            font-family: 'Fredoka One', cursive;
+            font-size: clamp(42px, 11vw, 88px);
+            line-height: 1.15;
+            color: #fff;
+            text-shadow:
+                0 4px 0 rgba(0,0,0,0.2),
+                0 8px 32px rgba(100, 210, 255, 0.5),
+                0 0 80px rgba(74, 144, 226, 0.35);
+            letter-spacing: 2px;
+            white-space: nowrap;
+        }
+
+        .game-subtitle {
+            font-size: 15px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            margin-top: 10px;
+        }
+
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            margin-top: 52px;
+        }
+
+        .menu-footer {
+            margin-top: 36px;
+            font-size: 13px;
+            color: rgba(255,255,255,0.35);
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           SCREEN 2 — Level Select
+        ═══════════════════════════════════════════════════════════════ */
+        #screen-levels .glass-card {
+            padding: 36px 44px 44px;
+            width: min(820px, 92vw);
+        }
+
+        .screen-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+        }
+
+        .screen-heading {
+            font-family: 'Fredoka One', cursive;
+            font-size: 34px;
+            color: white;
+        }
+
+        .levels-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+        }
+
+        .level-card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 22px 14px 18px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+        }
+
+        .level-card:hover {
+            transform: translateY(-5px) scale(1.03);
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+        }
+
+        .level-card.solved {
+            border-color: rgba(105, 219, 124, 0.7);
+            background: rgba(105, 219, 124, 0.12);
+        }
+
+        .level-card .lc-num {
+            font-family: 'Fredoka One', cursive;
+            font-size: 38px;
+            color: white;
+            line-height: 1;
+        }
+
+        .level-card .lc-name {
+            font-size: 11px;
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 6px;
+            min-height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .level-card .lc-badge {
+            margin-top: 10px;
+            font-size: 13px;
+            min-height: 20px;
+            color: #69db7c;
+            font-weight: 700;
+        }
+
+        .diff-row {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+            margin-top: 8px;
+        }
+
+        .diff-pip {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .diff-pip.on {
+            background: #ffd43b;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           SCREEN 3 — How to Play
+        ═══════════════════════════════════════════════════════════════ */
+        #screen-howto .glass-card {
+            padding: 40px 56px 48px;
+            width: min(680px, 90vw);
+            max-height: 92vh;
+            overflow-y: auto;
+        }
+
+        #screen-howto .glass-card::-webkit-scrollbar { width: 0; }
+
+        .howto-heading {
+            font-family: 'Fredoka One', cursive;
+            font-size: 38px;
+            color: white;
+        }
+
+        .howto-steps {
+            margin-top: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        .howto-step {
+            display: flex;
+            gap: 18px;
+            align-items: flex-start;
+        }
+
+        .step-emoji {
+            font-size: 30px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .step-body h3 {
+            font-size: 17px;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 4px;
+        }
+
+        .step-body p {
+            font-size: 14.5px;
+            color: rgba(255, 255, 255, 0.78);
+            line-height: 1.6;
+        }
+
+        .conservation-box {
+            background: rgba(255, 215, 67, 0.12);
+            border: 1.5px solid rgba(255, 215, 67, 0.35);
+            border-radius: 16px;
+            padding: 16px 20px;
+            margin-top: 24px;
+            font-size: 14.5px;
+            color: rgba(255,255,255,0.88);
+            line-height: 1.65;
+            text-align: center;
+        }
+
+        .conservation-box .hl { color: #ffd43b; font-weight: 800; }
+
+        .howto-cta {
+            margin-top: 32px;
+            text-align: center;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           SCREEN 4 — Game (placeholder, populated by game.js)
+        ═══════════════════════════════════════════════════════════════ */
+        #screen-game {
+            flex-direction: column;
+            gap: 0;
+        }
+
+        #game-ui-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #game-topbar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            background: rgba(0,0,0,0.25);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            z-index: 10;
+        }
+
+        #game-topbar .tb-title {
+            font-family: 'Fredoka One', cursive;
+            font-size: 24px;
+            color: white;
+        }
+
+        #game-topbar .tb-flow {
+            font-size: 18px;
+            font-weight: 800;
+            color: white;
+        }
+
+        #game-topbar .tb-flow span { color: #ffd43b; }
+
+        #game-canvas-wrap {
+            position: absolute;
+            top: 64px; left: 0; right: 0; bottom: 64px;
+        }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #game-bottombar {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: rgba(0,0,0,0.25);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(255,255,255,0.1);
+            z-index: 10;
+        }
+
+        #btn-check {
+            font-family: 'Nunito', sans-serif;
+            font-size: 17px;
+            font-weight: 800;
+            padding: 12px 40px;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            background: linear-gradient(135deg, #ffd43b, #ff9f43);
+            color: #1a1a2e;
+            transition: transform 0.12s, box-shadow 0.12s;
+            box-shadow: 0 4px 16px rgba(255,159,67,0.4);
+        }
+
+        #btn-check:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,159,67,0.5); }
+        #btn-check:active { transform: translateY(0); }
+
+        #btn-reset-level {
+            font-family: 'Nunito', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 10px 24px;
+            border-radius: 50px;
+            border: 1.5px solid rgba(255,255,255,0.35);
+            background: rgba(255,255,255,0.12);
+            color: white;
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+
+        #btn-reset-level:hover { background: rgba(255,255,255,0.22); }
+
+        /* ── Win overlay ───────────────────────────────────────────── */
+        #win-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 30, 60, 0.78);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            flex-direction: column;
+        }
+
+        #win-overlay.show { display: flex; }
+
+        .win-card {
+            background: rgba(255,255,255,0.14);
+            backdrop-filter: blur(28px);
+            border: 1.5px solid rgba(255,255,255,0.3);
+            border-radius: 28px;
+            padding: 52px 72px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.7); opacity: 0; }
+            to   { transform: scale(1);   opacity: 1; }
+        }
+
+        .win-emoji { font-size: 64px; display: block; margin-bottom: 12px; }
+
+        .win-title {
+            font-family: 'Fredoka One', cursive;
+            font-size: 52px;
+            color: #ffd43b;
+            text-shadow: 0 4px 20px rgba(255,215,67,0.4);
+        }
+
+        .win-subtitle {
+            font-size: 17px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 8px;
+            font-weight: 600;
+        }
+
+        .win-buttons {
+            display: flex;
+            gap: 14px;
+            margin-top: 36px;
+            justify-content: center;
+        }
+
+        .win-buttons .btn-play { font-size: 18px; padding: 14px 48px; }
+
+        /* ── Pipe slider overlay ──────────────────────────────────────── */
+        .slider-wrap {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: all;
+            z-index: 5;
+            transform: translate(-50%, -50%);
+        }
+
+        .slider-label {
+            font-family: 'Nunito', sans-serif;
+            font-size: 11px;
+            font-weight: 800;
+            color: white;
+            background: rgba(10, 20, 50, 0.8);
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            border: 1px solid rgba(255,255,255,0.2);
+            backdrop-filter: blur(4px);
+        }
+
+        .pipe-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 88px;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .pipe-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ffd43b, #ff9f43);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+            border: 2px solid white;
+        }
+
+        .pipe-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ffd43b, #ff9f43);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+            border: 2px solid white;
+        }
+
+        /* ── Toast feedback ───────────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 84px;
+            left: 50%;
+            transform: translateX(-50%) translateY(0);
+            background: rgba(10, 20, 50, 0.92);
+            color: white;
+            font-family: 'Nunito', sans-serif;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 11px 26px;
+            border-radius: 50px;
+            border: 1px solid rgba(255,255,255,0.2);
+            z-index: 200;
+            pointer-events: none;
+            animation: toastIn 0.25s ease, toastOut 0.3s ease 2.3s forwards;
+        }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes toastOut {
+            from { opacity: 1; }
+            to   { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     Animated background
+═══════════════════════════════════════════════════════════════ -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 1 — Main Menu
+═══════════════════════════════════════════════════════════════ -->
+<div id="screen-menu" class="screen active">
+    <div class="glass-card">
+        <span class="title-drop">💧</span>
+        <h1 class="game-title">PipeDream</h1>
+        <p class="game-subtitle">Find the Maximum Flow</p>
+        <div class="menu-buttons">
+            <button class="btn btn-play" onclick="showScreen('levels')">▶&nbsp; Play</button>
+            <button class="btn btn-outline" onclick="showScreen('howto')">How to Play</button>
+        </div>
+        <p class="menu-footer">A Max-Flow Puzzle Game</p>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 2 — Level Select
+═══════════════════════════════════════════════════════════════ -->
+<div id="screen-levels" class="screen">
+    <div class="glass-card">
+        <div class="screen-header">
+            <h2 class="screen-heading">🗺️ Select a Level</h2>
+            <button class="btn btn-small" onclick="showScreen('menu')">← Back</button>
+        </div>
+        <div class="levels-grid" id="levels-grid">
+            <!-- populated by buildLevelGrid() -->
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 3 — How to Play
+═══════════════════════════════════════════════════════════════ -->
+<div id="screen-howto" class="screen">
+    <div class="glass-card">
+        <div class="screen-header">
+            <h2 class="howto-heading">📖 How to Play</h2>
+            <button class="btn btn-small" onclick="showScreen('menu')">← Back</button>
+        </div>
+        <div class="howto-steps">
+            <div class="howto-step">
+                <span class="step-emoji">🔵</span>
+                <div class="step-body">
+                    <h3>Source &amp; Sink</h3>
+                    <p>Every puzzle has a <strong>Source</strong> node (blue — water enters the system) and a
+                       <strong>Sink</strong> node (teal — water exits). Your goal is to push as much water
+                       as possible from Source to Sink.</p>
+                </div>
+            </div>
+            <div class="howto-step">
+                <span class="step-emoji">🎚️</span>
+                <div class="step-body">
+                    <h3>Adjust the Sliders</h3>
+                    <p>Each pipe has a <strong>capacity</strong> (the maximum water it can carry) and a
+                       <strong>flow</strong> (how much you actually send). Drag the slider on a pipe to
+                       set its flow — anywhere from 0 up to its capacity.</p>
+                </div>
+            </div>
+            <div class="howto-step">
+                <span class="step-emoji">⚖️</span>
+                <div class="step-body">
+                    <h3>Conservation Rule</h3>
+                    <p>At every <em>middle</em> node, water flowing <strong>in</strong> must equal water
+                       flowing <strong>out</strong>. You can't store water mid-network! The game highlights
+                       any node that's out of balance in red.</p>
+                </div>
+            </div>
+            <div class="howto-step">
+                <span class="step-emoji">🏆</span>
+                <div class="step-body">
+                    <h3>Find the Maximum</h3>
+                    <p>Once the network is balanced, hit <strong>Check Flow</strong>. You win the level when
+                       your total flow equals the network's true maximum — which you'll have to discover!</p>
+                </div>
+            </div>
+        </div>
+        <div class="conservation-box">
+            <span class="hl">Key insight:</span> there's always a bottleneck somewhere in the network.
+            The maximum flow is limited by the smallest total capacity across any "cut" of pipes that
+            separates Source from Sink. Finding that cut is the secret!
+        </div>
+        <div class="howto-cta">
+            <button class="btn btn-play" style="font-size:18px;padding:14px 52px" onclick="showScreen('levels')">
+                Let's Go! 🌊
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SCREEN 4 — Game
+     (Structure here; logic lives in js/game.js)
+═══════════════════════════════════════════════════════════════ -->
+<div id="screen-game" class="screen">
+    <div id="game-ui-wrapper">
+
+        <!-- Top bar -->
+        <div id="game-topbar">
+            <button class="btn btn-small" id="btn-levels-back" onclick="showScreen('levels')">← Levels</button>
+            <div class="tb-title" id="game-level-label">Level 1 — Straight Shot</div>
+            <div class="tb-flow">Flow: <span id="flow-display">0</span> / <span id="max-display">?</span></div>
+        </div>
+
+        <!-- Canvas area (game.js draws here) -->
+        <div id="game-canvas-wrap">
+            <canvas id="game-canvas"></canvas>
+        </div>
+
+        <!-- Bottom bar -->
+        <div id="game-bottombar">
+            <button id="btn-reset-level">↺ Reset</button>
+            <button id="btn-check">✔ Check Flow</button>
+        </div>
+
+        <!-- Win overlay -->
+        <div id="win-overlay">
+            <div class="win-card">
+                <span class="win-emoji">🎉</span>
+                <div class="win-title">Flow Found!</div>
+                <div class="win-subtitle" id="win-subtitle">You found the maximum flow!</div>
+                <div class="win-buttons">
+                    <button class="btn btn-outline" onclick="showScreen('levels')">Level Select</button>
+                    <button class="btn btn-play" id="btn-next-level">Next Level →</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     Scripts — order matters: levels → graph → renderer → game
+═══════════════════════════════════════════════════════════════ -->
+<script src="js/levels.js"></script>
+<script src="js/graph.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/game.js"></script>
+
+<script>
+// ── Screen navigation ──────────────────────────────────────────────────────
+function showScreen(name) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen-' + name).classList.add('active');
+    if (name === 'levels') buildLevelGrid();
+}
+
+// ── Level select grid ──────────────────────────────────────────────────────
+const LEVEL_META = [
+    { id: 1, name: 'Straight Shot',    difficulty: 1 },
+    { id: 2, name: 'Fork in the Road', difficulty: 1 },
+    { id: 3, name: 'The Bottleneck',   difficulty: 2 },
+    { id: 4, name: 'The Diamond',      difficulty: 2 },
+    { id: 5, name: 'Three Paths',      difficulty: 3 },
+    { id: 6, name: 'The Crossroads',   difficulty: 3 },
+    { id: 7, name: 'The Maze',         difficulty: 4 },
+    { id: 8, name: 'Grand Finale',     difficulty: 5 },
+];
+
+function buildLevelGrid() {
+    const completed = JSON.parse(localStorage.getItem('pipedream-completed') || '[]');
+    document.getElementById('levels-grid').innerHTML = LEVEL_META.map(lvl => {
+        const done = completed.includes(lvl.id);
+        const pips = Array.from({ length: 5 }, (_, i) =>
+            `<div class="diff-pip ${i < lvl.difficulty ? 'on' : ''}"></div>`
+        ).join('');
+        return `
+            <div class="level-card ${done ? 'solved' : ''}" onclick="launchLevel(${lvl.id})">
+                <div class="lc-num">${lvl.id}</div>
+                <div class="lc-name">${lvl.name}</div>
+                <div class="lc-badge">${done ? '✔ Solved' : ''}</div>
+                <div class="diff-row">${pips}</div>
+            </div>`;
+    }).join('');
+}
+
+buildLevelGrid();
+
+// launchLevel is defined in game.js — called here from level cards
+// and also from the "Next Level" button in the win overlay.
+
+// ── Background canvas animation ────────────────────────────────────────────
+(function initBackground() {
+    const canvas = document.getElementById('bg-canvas');
+    const ctx    = canvas.getContext('2d');
+    const GRID   = 110;
+
+    let W, H, pipes = [], drops = [];
+
+    function resize() {
+        W = canvas.width  = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+        buildPipes();
+    }
+
+    function buildPipes() {
+        pipes = [];
+        const cols = Math.ceil(W / GRID) + 1;
+        const rows = Math.ceil(H / GRID) + 1;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols - 1; c++) {
+                if (Math.random() < 0.42) {
+                    pipes.push({ x1: c * GRID, y1: r * GRID, x2: (c+1) * GRID, y2: r * GRID });
+                }
+            }
+        }
+        for (let r = 0; r < rows - 1; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (Math.random() < 0.42) {
+                    pipes.push({ x1: c * GRID, y1: r * GRID, x2: c * GRID, y2: (r+1) * GRID });
+                }
+            }
+        }
+
+        drops = [];
+        for (let i = 0; i < 50; i++) spawnDrop();
+    }
+
+    function spawnDrop() {
+        if (!pipes.length) return;
+        const p = pipes[Math.floor(Math.random() * pipes.length)];
+        drops.push({
+            pipe: p,
+            t: Math.random(),
+            speed: 0.003 + Math.random() * 0.006,
+            r: 2.5 + Math.random() * 3,
+            alpha: 0.35 + Math.random() * 0.45
+        });
+    }
+
+    function frame() {
+        ctx.clearRect(0, 0, W, H);
+
+        // Background gradient
+        const g = ctx.createLinearGradient(0, 0, W, H);
+        g.addColorStop(0,   '#0b1d3a');
+        g.addColorStop(0.5, '#0f2d5c');
+        g.addColorStop(1,   '#07203d');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+
+        // Pipe tubes (outer glow + inner channel)
+        ctx.lineCap = 'round';
+        for (const p of pipes) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+            ctx.lineWidth = 14;
+            ctx.beginPath(); ctx.moveTo(p.x1, p.y1); ctx.lineTo(p.x2, p.y2); ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+            ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(p.x1, p.y1); ctx.lineTo(p.x2, p.y2); ctx.stroke();
+        }
+
+        // Joint dots
+        const seen = new Set();
+        for (const p of pipes) {
+            for (const [x, y] of [[p.x1,p.y1],[p.x2,p.y2]]) {
+                const key = `${x},${y}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 8, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Water drops
+        for (let i = drops.length - 1; i >= 0; i--) {
+            const d = drops[i];
+            d.t += d.speed;
+            if (d.t > 1) { drops.splice(i, 1); spawnDrop(); continue; }
+
+            const x = d.pipe.x1 + (d.pipe.x2 - d.pipe.x1) * d.t;
+            const y = d.pipe.y1 + (d.pipe.y2 - d.pipe.y1) * d.t;
+            ctx.beginPath();
+            ctx.arc(x, y, d.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(100, 195, 255, ${d.alpha})`;
+            ctx.fill();
+        }
+
+        // Vignette
+        const vig = ctx.createRadialGradient(W/2, H/2, H * 0.25, W/2, H/2, H * 0.85);
+        vig.addColorStop(0, 'transparent');
+        vig.addColorStop(1, 'rgba(0,0,0,0.5)');
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, W, H);
+
+        requestAnimationFrame(frame);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
